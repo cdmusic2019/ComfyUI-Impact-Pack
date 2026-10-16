@@ -309,389 +309,340 @@ app.registerExtension({
 	},
 
 	async beforeRegisterNodeDef(nodeType, nodeData, app) {
-		if (nodeData.name == "IterativeLatentUpscale" || nodeData.name == "IterativeImageUpscale"
-			|| nodeData.name == "RegionalSampler"|| nodeData.name == "RegionalSamplerAdvanced") {
-			impactProgressBadge.addStatusHandler(nodeType);
-		}
-
-		if(nodeData.name == "ImpactControlBridge") {
-			const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-			nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
-				if(index != 0 || !link_info || this.inputs[0].type != '*')
-					return;
-
-				// assign type
-				let slot_type = '*';
-
-				if(type == 2) {
-					slot_type = link_info.type;
-				}
-				else {
-					const node = app.graph.getNodeById(link_info.origin_id);
-					slot_type = node?.outputs[link_info.origin_slot]?.type;
-				}
-
-				this.inputs[0].type = slot_type;
-				this.outputs[0].type = slot_type;
-				this.outputs[0].label = slot_type;
-			}
-		}
-
-		if(nodeData.name == "ImpactConditionalBranch" || nodeData.name == "ImpactConditionalBranchSelMode") {
-			const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-			nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
-				if(!link_info || this.inputs[0].type != '*')
-					return;
-
-				if(index >= 2)
-					return;
-
-				// assign type
-				let slot_type = '*';
-
-				if(type == 2) {
-					slot_type = link_info.type;
-				}
-				else {
-					const node = app.graph.getNodeById(link_info.origin_id);
-					slot_type = node?.outputs[link_info.origin_slot].type;
-				}
-
-				this.inputs[0].type = slot_type;
-				this.inputs[1].type = slot_type;
-				this.outputs[0].type = slot_type;
-				this.outputs[0].label = slot_type;
-			}
-		}
-
-		if(nodeData.name == "ImpactCompare") {
-			const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-			nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
-				if(!link_info || this.inputs[0].type != '*' || type == 2)
-					return;
-
-				// assign type
-				const node = app.graph.getNodeById(link_info.origin_id);
-				let slot_type = node?.outputs[link_info.origin_slot].type;
-
-				this.inputs[0].type = slot_type;
-				this.inputs[1].type = slot_type;
-			}
-		}
-
-		if(nodeData.name == "ImpactSelectNthItemOfAnyList") {
-			const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-			nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
-				if(!link_info || this.inputs[0].type != '*')
-					return;
-
-				if(index >= 2)
-					return;
-
-				// assign type
-				let slot_type = '*';
-
-				if(type == 2) {
-					slot_type = link_info.type;
-				}
-				else {
-					const node = app.graph.getNodeById(link_info.origin_id);
-					slot_type = node?.outputs[link_info.origin_slot].type;
-				}
-
-				this.inputs[0].type = slot_type;
-				this.outputs[0].type = slot_type;
-				this.outputs[0].label = slot_type;
-			}
-		}
-
-		if(nodeData.name === 'ImpactInversedSwitch') {
-			nodeData.output = ['*'];
-			nodeData.output_is_list = [false];
-			nodeData.output_name = ['output1'];
-
-			const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-			nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
-				if(!link_info)
-					return;
-
-				// HOTFIX: subgraph
-				const stackTrace = new Error().stack;
-
-				if(stackTrace.includes('convertToSubgraph') || stackTrace.includes('Subgraph.configure')) {
-					return;
-				}
-
-				if(type == 2) {
-					// connect output
-					if(connected){
-						if(app.graph._nodes_by_id[link_info.target_id]?.type == 'Reroute') {
-							app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
-						}
-
-						if(this.outputs[0].type == '*'){
-							if(link_info.type == '*' && app.graph.getNodeById(link_info.target_id).slots[link_info.target_slot].type != '*') {
-								app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
-							}
-							else {
-								// propagate type
-								this.outputs[0].type = link_info.type;
-								this.outputs[0].name = link_info.type;
-
-								for(let i in this.inputs) {
-									if(this.inputs[i].name != 'select')
-										this.inputs[i].type = link_info.type;
-								}
-							}
-						}
-					}
-				}
-				else {
-					if(app.graph._nodes_by_id[link_info.origin_id]?.type == 'Reroute')
-						this.disconnectInput(link_info.target_slot);
-
-					// connect input
-					if(this.inputs[0].type == '*'){
-						const node = app.graph.getNodeById(link_info.origin_id);
-						let origin_type = node?.outputs[link_info.origin_slot]?.type;
-
-						if(origin_type==undefined) {
-							return; // fallback
-						}
-
-						if(origin_type == '*' && app.graph.getNodeById(link_info.origin_id).slots[link_info.origin_slot].type != '*') {
-							this.disconnectInput(link_info.target_slot);
-							return;
-						}
-
-						for(let i in this.inputs) {
-							if(this.inputs[i].name != 'select')
-								this.inputs[i].type = origin_type;
-						}
-
-						this.outputs[0].type = origin_type;
-						this.outputs[0].name = 'output1';
-					}
-
-					return;
-				}
-
-				if (!connected && this.outputs.length > 1) {
-					const stackTrace = new Error().stack;
-
-					if(
-						!stackTrace.includes('LGraphNode.prototype.connect') && // for touch device
-						!stackTrace.includes('LGraphNode.connect') && // for mouse device
-						!stackTrace.includes('loadGraphData')) {
-							if(this.outputs[link_info.origin_slot].links.length == 0) {
-								this.removeOutput(link_info.origin_slot);
-							}
-					}
-				}
-
-				let slot_i = 1;
-				for (let i = 0; i < this.outputs.length; i++) {
-					this.outputs[i].name = `output${slot_i}`
-					if (this.outputs[i].slot_index === undefined) {
-						this.outputs[i].slot_index = i;
-					}
-					slot_i++;
-				}
-
-				if(connected) {
-					// NOTE: node.slot_index is different with link_info.origin_slot
-					let last_slot_index = this.outputs.length - 1;
-					if (last_slot_index == link_info.origin_slot) {
-						this.addOutput(`output${slot_i}`, this.outputs[0].type);
-					}
-				}
-
-				let select_slot = this.inputs.find(x => x.name == "select");
-				if(this.widgets?.length) {
-					this.widgets[0].options.max = select_slot?this.outputs.length-1:this.outputs.length;
-					this.widgets[0].value = Math.min(this.widgets[0].value, this.widgets[0].options.max);
-					if(this.widgets[0].options.max > 0 && this.widgets[0].value == 0)
-						this.widgets[0].value = 1;
-				}
-			}
-		}
-
-		if (nodeData.name === 'ImpactMakeImageList' || nodeData.name === 'ImpactMakeImageBatch' ||
-		    nodeData.name === 'ImpactMakeMaskList' || nodeData.name === 'ImpactMakeMaskBatch' ||
-			nodeData.name === 'ImpactMakeAnyList' || nodeData.name === 'CombineRegionalPrompts' ||
-			nodeData.name === 'ImpactCombineConditionings' || nodeData.name === 'ImpactConcatConditionings' ||
-			nodeData.name === 'ImpactSEGSConcat' ||
-			nodeData.name === 'ImpactSwitch' || nodeData.name === 'LatentSwitch' || nodeData.name == 'SEGSSwitch') {
-			var input_name = "input";
-
-			switch(nodeData.name) {
-			case 'ImpactMakeImageList':
-			case 'ImpactMakeImageBatch':
-				input_name = "image";
-				break;
-
-			case 'ImpactMakeMaskList':
-			case 'ImpactMakeMaskBatch':
-				input_name = "mask";
-				break;
-
-			case 'ImpactMakeAnyList':
-				input_name = "value";
-				break;
-
-			case 'ImpactSEGSConcat':
-				input_name = "segs";
-				break;
-
-			case 'CombineRegionalPrompts':
-				input_name = "regional_prompts";
-				break;
-
-			case 'ImpactCombineConditionings':
-			case 'ImpactConcatConditionings':
-				input_name = "conditioning";
-				break;
-
-			case 'LatentSwitch':
-				input_name = "input";
-				break;
-
-			case 'SEGSSwitch':
-				input_name = "input";
-				break;
-
-			case 'ImpactSwitch':
-				input_name = "input";
-			}
-
-			const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-			nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
-				const stackTrace = new Error().stack;
-
-				// HOTFIX: subgraph
-				if(stackTrace.includes('convertToSubgraph') || stackTrace.includes('Subgraph.configure')) {
-					return;
-				}
-
-				if(stackTrace.includes('loadGraphData')) {
-					if(this.widgets?.[0]) {
-						this.widgets[0].options.max = this.inputs.length-3;
-						this.widgets[0].value = Math.min(this.widgets[0].value, this.widgets[0].options.max);
-					}
-					return;
-				}
-
-				if(stackTrace.includes('pasteFromClipboard')) {
-					if(this.widgets?.[0]) {
-						this.widgets[0].options.max = this.inputs.length-3;
-						this.widgets[0].value = Math.min(this.widgets[0].value, this.widgets[0].options.max);
-					}
-					return;
-				}
-
-				if(!link_info)
-					return;
-
-				if(type == 2) {
-					// connect output
-					if(connected && index == 0){
-						if(nodeData.name == 'ImpactSwitch' && app.graph._nodes_by_id[link_info.target_id]?.type == 'Reroute') {
-							app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
-						}
-
-						if(this.outputs[0].type == '*'){
-							if(link_info.type == '*' && app.graph.getNodeById(link_info.target_id).slots[link_info.target_slot].type != '*') {
-								app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
-							}
-							else {
-								// propagate type
-								this.outputs[0].type = link_info.type;
-								this.outputs[0].label = link_info.type;
-								this.outputs[0].name = link_info.type;
-
-								for(let i in this.inputs) {
-									let input_i = this.inputs[i];
-									if(input_i.name != 'select' && input_i.name != 'sel_mode')
-										input_i.type = link_info.type;
-								}
-							}
-						}
-					}
-
-					return;
-				}
-				else {
-					if(nodeData.name == 'ImpactSwitch' && app.graph._nodes_by_id[link_info.origin_id]?.type == 'Reroute')
-						this.disconnectInput(link_info.target_slot);
-
-					// connect input
-					if(this.inputs[index].name == 'select' || this.inputs[index].name == 'sel_mode')
-						return;
-
-					if(this.inputs[0].type == '*'){
-						const node = app.graph.getNodeById(link_info.origin_id);
-
-						// NOTE: node is undefined when subgraph editing mode
-						if(node) {
-							let origin_type = node.outputs[link_info.origin_slot]?.type;
-							if(link_info.target_slot == 0 && this.inputs.length > 3) {  // NOTE: widgets are regarded as input since new front
-									origin_type = this.inputs[1].type;
-									node.connect(link_info.origin_slot, node.id, 'input1');
-							}
-
-							if(origin_type == '*' && app.graph.getNodeById(link_info.origin_id).slots[link_info.origin_slot].type != '*') {
-								this.disconnectInput(link_info.target_slot);
-								return;
-							}
-
-							for(let i in this.inputs) {
-								let input_i = this.inputs[i];
-								if(input_i.name != 'select' && input_i.name != 'sel_mode')
-									input_i.type = origin_type;
-							}
-
-							this.outputs[0].type = origin_type;
-							this.outputs[0].label = origin_type;
-							this.outputs[0].name = origin_type;
-						}
-					}
-				}
-
-				let widget_count = 0;
-				if(nodeData.name == 'ImpactSwitch' || nodeData.name == 'LatentSwitch' || nodeData.name == 'SEGSSwitch') {
-					widget_count += 1;
-				}
-
-				if (!connected && (this.inputs.length > widget_count+1)) {
-					if(
-						!stackTrace.includes('LGraphNode.prototype.connect') && // for touch device
-						!stackTrace.includes('LGraphNode.connect') && // for mouse device
-						!stackTrace.includes('loadGraphData') &&
-						this.inputs[index].name != 'select') {
-						    this.removeInput(index);
-					}
-				}
-
-				let slot_i = 1;
-				for (let i = 0; i < this.inputs.length; i++) {
-					let input_i = this.inputs[i];
-					if(input_i.name != 'select'&& input_i.name != 'sel_mode') {
-						input_i.name = `${input_name}${slot_i}`
-						slot_i++;
-					}
-				}
-
-				if(connected) {
-					this.addInput(`${input_name}${slot_i}`, this.outputs[0].type);
-				}
-
-				if(this.widgets?.[0]) {
-					this.widgets[0].options.max = this.inputs.length-3;
-					this.widgets[0].value = Math.min(this.widgets[0].value, this.widgets[0].options.max);
-				}
-			}
-		}
-	},
+        if (nodeData.name == "IterativeLatentUpscale" || nodeData.name == "IterativeImageUpscale"
+            || nodeData.name == "RegionalSampler"|| nodeData.name == "RegionalSamplerAdvanced") {
+            impactProgressBadge.addStatusHandler(nodeType);
+        }
+        if(nodeData.name == "ImpactControlBridge") {
+            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
+                if(index != 0 || !link_info || this.inputs[0].type != '*')
+                    return;
+                // assign type
+                let slot_type = '*';
+                if(type == 2) {
+                    slot_type = link_info.type;
+                }
+                else {
+                    const node = app.graph.getNodeById(link_info.origin_id);
+                    slot_type = node?.outputs[link_info.origin_slot]?.type;
+                }
+                this.inputs[0].type = slot_type;
+                this.outputs[0].type = slot_type;
+                this.outputs[0].label = slot_type;
+            }
+        }
+        if(nodeData.name == "ImpactConditionalBranch" || nodeData.name == "ImpactConditionalBranchSelMode") {
+            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
+                if(!link_info || this.inputs[0].type != '*')
+                    return;
+                if(index >= 2)
+                    return;
+                // assign type
+                let slot_type = '*';
+                if(type == 2) {
+                    slot_type = link_info.type;
+                }
+                else {
+                    const node = app.graph.getNodeById(link_info.origin_id);
+                    slot_type = node?.outputs[link_info.origin_slot].type;
+                }
+                this.inputs[0].type = slot_type;
+                this.inputs[1].type = slot_type;
+                this.outputs[0].type = slot_type;
+                this.outputs[0].label = slot_type;
+            }
+        }
+        if(nodeData.name == "ImpactCompare") {
+            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
+                if(!link_info || this.inputs[0].type != '*' || type == 2)
+                    return;
+                // assign type
+                const node = app.graph.getNodeById(link_info.origin_id);
+                let slot_type = node?.outputs[link_info.origin_slot].type;
+                this.inputs[0].type = slot_type;
+                this.inputs[1].type = slot_type;
+            }
+        }
+        if(nodeData.name == "ImpactSelectNthItemOfAnyList") {
+            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
+                if(!link_info || this.inputs[0].type != '*')
+                    return;
+                if(index >= 2)
+                    return;
+                // assign type
+                let slot_type = '*';
+                if(type == 2) {
+                    slot_type = link_info.type;
+                }
+                else {
+                    const node = app.graph.getNodeById(link_info.origin_id);
+                    slot_type = node?.outputs[link_info.origin_slot].type;
+                }
+                this.inputs[0].type = slot_type;
+                this.outputs[0].type = slot_type;
+                this.outputs[0].label = slot_type;
+            }
+        }
+        if(nodeData.name === 'ImpactInversedSwitch') {
+            nodeData.output = ['*'];
+            nodeData.output_is_list = [false];
+            nodeData.output_name = ['output1'];
+            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
+                if(!link_info)
+                    return;
+                // HOTFIX: subgraph
+                const stackTrace = new Error().stack;
+                if(stackTrace.includes('convertToSubgraph') || stackTrace.includes('Subgraph.configure')) {
+                    return;
+                }
+                if(type == 2) {
+                    // connect output
+                    if(connected){
+                        if(app.graph._nodes_by_id[link_info.target_id]?.type == 'Reroute') {
+                            app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
+                        }
+                        if(this.outputs[0].type == '*'){
+                            if(link_info.type == '*' && app.graph.getNodeById(link_info.target_id).slots[link_info.target_slot].type != '*') {
+                                app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
+                            }
+                            else {
+                                // propagate type
+                                this.outputs[0].type = link_info.type;
+                                this.outputs[0].name = link_info.type;
+                                for(let i in this.inputs) {
+                                    if(this.inputs[i].name != 'select')
+                                        this.inputs[i].type = link_info.type;
+                                }
+                            }
+                        }
+                    }
+                }
+                else {
+                    if(app.graph._nodes_by_id[link_info.origin_id]?.type == 'Reroute')
+                        this.disconnectInput(link_info.target_slot);
+                    // connect input
+                    if(this.inputs[0].type == '*'){
+                        const node = app.graph.getNodeById(link_info.origin_id);
+                        let origin_type = node?.outputs[link_info.origin_slot]?.type;
+                        if(origin_type==undefined) {
+                            return; // fallback
+                        }
+                        if(origin_type == '*' && app.graph.getNodeById(link_info.origin_id).slots[link_info.origin_slot].type != '*') {
+                            this.disconnectInput(link_info.target_slot);
+                            return;
+                        }
+                        for(let i in this.inputs) {
+                            if(this.inputs[i].name != 'select')
+                                this.inputs[i].type = origin_type;
+                        }
+                        this.outputs[0].type = origin_type;
+                        this.outputs[0].name = 'output1';
+                    }
+                    return;
+                }
+                if (!connected && this.outputs.length > 1) {
+                    const stackTrace = new Error().stack;
+                    if(
+                        !stackTrace.includes('LGraphNode.prototype.connect') && // for touch device
+                        !stackTrace.includes('LGraphNode.connect') && // for mouse device
+                        !stackTrace.includes('loadGraphData')) {
+                            if(this.outputs[link_info.origin_slot].links.length == 0) {
+                                this.removeOutput(link_info.origin_slot);
+                            }
+                    }
+                }
+                let slot_i = 1;
+                for (let i = 0; i < this.outputs.length; i++) {
+                    this.outputs[i].name = `output${slot_i}`
+                    if (this.outputs[i].slot_index === undefined) {
+                        this.outputs[i].slot_index = i;
+                    }
+                    slot_i++;
+                }
+                if(connected) {
+                    // NOTE: node.slot_index is different with link_info.origin_slot
+                    let last_slot_index = this.outputs.length - 1;
+                    if (last_slot_index == link_info.origin_slot) {
+                        this.addOutput(`output${slot_i}`, this.outputs[0].type);
+                    }
+                }
+                let select_slot = this.inputs.find(x => x.name == "select");
+                if(this.widgets?.length) {
+                    this.widgets[0].options.max = select_slot?this.outputs.length-1:this.outputs.length;
+                    this.widgets[0].value = Math.min(this.widgets[0].value, this.widgets[0].options.max);
+                    if(this.widgets[0].options.max > 0 && this.widgets[0].value == 0)
+                        this.widgets[0].value = 1;
+                }
+            }
+        }
+        if (nodeData.name === 'ImpactMakeImageList' || nodeData.name === 'ImpactMakeImageBatch' ||
+            nodeData.name === 'ImpactMakeMaskList' || nodeData.name === 'ImpactMakeMaskBatch' ||
+            nodeData.name === 'ImpactMakeAnyList' || nodeData.name === 'CombineRegionalPrompts' ||
+            nodeData.name === 'ImpactCombineConditionings' || nodeData.name === 'ImpactConcatConditionings' ||
+            nodeData.name === 'ImpactSEGSConcat' ||
+            nodeData.name === 'ImpactSwitch' || nodeData.name === 'LatentSwitch' || nodeData.name == 'SEGSSwitch') {
+            var input_name = "input";
+            switch(nodeData.name) {
+            case 'ImpactMakeImageList':
+            case 'ImpactMakeImageBatch':
+                input_name = "image";
+                break;
+            case 'ImpactMakeMaskList':
+            case 'ImpactMakeMaskBatch':
+                input_name = "mask";
+                break;
+            case 'ImpactMakeAnyList':
+                input_name = "value";
+                break;
+            case 'ImpactSEGSConcat':
+                input_name = "segs";
+                break;
+            case 'CombineRegionalPrompts':
+                input_name = "regional_prompts";
+                break;
+            case 'ImpactCombineConditionings':
+            case 'ImpactConcatConditionings':
+                input_name = "conditioning";
+                break;
+            case 'LatentSwitch':
+                input_name = "input";
+                break;
+            case 'SEGSSwitch':
+                input_name = "input";
+                break;
+            case 'ImpactSwitch':
+                input_name = "input";
+            }
+            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (type, index, connected, link_info) {
+                const stackTrace = new Error().stack;
+                // HOTFIX: subgraph
+                if(stackTrace.includes('convertToSubgraph') || stackTrace.includes('Subgraph.configure')) {
+                    return;
+                }
+                if(stackTrace.includes('loadGraphData') || stackTrace.includes('pasteFromClipboard') || stackTrace.includes('deserialize') || stackTrace.includes('configure')) {
+                    if(this.widgets?.[0]) {
+                        this.widgets[0].options.max = this.inputs.length-3;
+                        this.widgets[0].value = Math.min(this.widgets[0].value, this.widgets[0].options.max);
+                    }
+                    return;
+                }
+                
+                if(!link_info)
+                    return;
+                
+                if(type == 2) {
+                    // connect output
+                    if(connected && index == 0){
+                        if(nodeData.name == 'ImpactSwitch' && app.graph._nodes_by_id[link_info.target_id]?.type == 'Reroute') {
+                            app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
+                        }
+                        if(this.outputs[0].type == '*'){
+                            if(link_info.type == '*' && app.graph.getNodeById(link_info.target_id).slots[link_info.target_slot].type != '*') {
+                                app.graph._nodes_by_id[link_info.target_id].disconnectInput(link_info.target_slot);
+                            }
+                            else {
+                                // propagate type
+                                this.outputs[0].type = link_info.type;
+                                this.outputs[0].label = link_info.type;
+                                this.outputs[0].name = link_info.type;
+                                for(let i in this.inputs) {
+                                    let input_i = this.inputs[i];
+                                    if(input_i.name != 'select' && input_i.name != 'sel_mode')
+                                        input_i.type = link_info.type;
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+                else { // type == 1 (Input)
+                    if(nodeData.name == 'ImpactSwitch' && app.graph._nodes_by_id[link_info.origin_id]?.type == 'Reroute')
+                        this.disconnectInput(link_info.target_slot);
+                    // connect input
+                    if(this.inputs[index].name == 'select' || this.inputs[index].name == 'sel_mode')
+                        return;
+                    
+                    if(this.inputs[0].type == '*'){
+                        const node = app.graph.getNodeById(link_info.origin_id);
+                        if(node) {
+                            let origin_type = node.outputs[link_info.origin_slot]?.type;
+                            if(origin_type == '*' && app.graph.getNodeById(link_info.origin_id).slots[link_info.origin_slot].type != '*') {
+                                this.disconnectInput(link_info.target_slot);
+                                return;
+                            }
+                            for(let i in this.inputs) {
+                                let input_i = this.inputs[i];
+                                if(input_i.name != 'select' && input_i.name != 'sel_mode')
+                                    input_i.type = origin_type;
+                            }
+                            this.outputs[0].type = origin_type;
+                            this.outputs[0].label = origin_type;
+                            this.outputs[0].name = origin_type;
+                        }
+                    }
+                    
+                    // ================= 新版端口动态增加与清理逻辑 =================
+                    
+                    let dynamicInputs = this.inputs.filter(inpt => inpt.name.startsWith(input_name));
+                    
+                    
+                    let lastInput = dynamicInputs[dynamicInputs.length - 1];
+                    if (lastInput && lastInput.link !== null) {
+                        
+                        let maxInputNum = 0;
+                        for (let i = 0; i < dynamicInputs.length; i++) {
+                            let num = parseInt(dynamicInputs[i].name.replace(input_name, ""));
+                            if (!isNaN(num) && num > maxInputNum) {
+                                maxInputNum = num;
+                            }
+                        }
+                        this.addInput(`${input_name}${maxInputNum + 1}`, this.outputs[0].type);
+                    }
+                    
+                    // 重新获取动态端口列表，从后往前检查，移除多余的空输入（保留至少一个）
+                    dynamicInputs = this.inputs.filter(inpt => inpt.name.startsWith(input_name));
+                    while (dynamicInputs.length > 1) {
+                        
+                        const lastIdx = this.inputs.indexOf(dynamicInputs[dynamicInputs.length - 1]);
+                        const secondLastIdx = this.inputs.indexOf(dynamicInputs[dynamicInputs.length - 2]);
+                        
+                        const last = this.inputs[lastIdx];
+                        const secondLast = this.inputs[secondLastIdx];
+                        
+                        
+                        if (last.link === null && secondLast.link === null) {
+                            this.removeInput(lastIdx);
+                            dynamicInputs.pop(); // 同步更新过滤列表
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // 重新排序并规范化端口名称 (保证顺序递增，如 input1, input2)
+                    let slot_i = 1;
+                    for (let i = 0; i < this.inputs.length; i++) {
+                        let input_i = this.inputs[i];
+                        if(input_i.name != 'select' && input_i.name != 'sel_mode') {
+                            input_i.name = `${input_name}${slot_i}`;
+                            slot_i++;
+                        }
+                    }
+
+                    
+                    if(this.widgets?.[0]) {
+                        this.widgets[0].options.max = this.inputs.length-3;
+                        this.widgets[0].value = Math.min(this.widgets[0].value, this.widgets[0].options.max);
+                    }
+                }
+            }
+        }
+    },
 
 	nodeCreated(node, app) {
 		if(node.comfyClass == "MaskPainter") {
